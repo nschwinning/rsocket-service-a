@@ -2,14 +2,18 @@ package com.eon.demo;
 
 import java.time.LocalDateTime;
 
+import org.flywaydb.core.Flyway;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
-import org.springframework.http.MediaType;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.rsocket.RSocketRequester;
+import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,9 +41,34 @@ public class RsocketServiceAApplication {
 	@Bean
 	RSocketRequester requester(RSocketRequester.Builder builder) {
 		log.info("Initializing RSocket Requester on port " + port);
-		return builder.dataMimeType(MimeTypeUtils.APPLICATION_JSON).tcp("localhost", port);
+		return builder
+				.dataMimeType(MimeTypeUtils.APPLICATION_JSON)
+				.tcp("localhost", port);
 	}
 
+}
+
+@Slf4j
+@Configuration
+class FlywayConfiguration {
+	
+	private final Environment env;
+
+    public FlywayConfiguration(final Environment env) {
+        this.env = env;
+    }
+
+    @Bean(initMethod = "migrate")
+    public Flyway flyway() {
+        var url = env.getRequiredProperty("spring.flyway.url");
+        var user = env.getRequiredProperty("spring.flyway.user");
+        var password = env.getRequiredProperty("spring.flyway.password");
+
+        log.info("Configuring database with flyway for URL: " + url + ", user: " + user);
+
+        return new Flyway(Flyway.configure().dataSource(url, user, password));
+    }
+	
 }
 
 @Slf4j
@@ -93,6 +122,31 @@ class QuoteController {
 
 }
 
+@Slf4j
+@RequiredArgsConstructor
+@Component
+class QuoteHandler {
+	
+	private final RSocketRequester requester;
+	private final QuoteRepository quoteRepository;
+	
+	@KafkaListener(topics = "quotes", groupId = "service-a")
+	public void consume(QuoteDto dto) {
+		log.info("Received dto with id " + dto.getId());
+		Mono<Quote> qMon = requester.route("quoteById")
+			.data(dto.getId())
+			.retrieveMono(Quote.class);
+		
+		qMon.subscribe(q -> {
+			log.info("Fetched quote with message " + q.getMessage());
+			q.setQuoteId(q.getId());
+			q.setId(null);
+			quoteRepository.save(q).subscribe();
+		});
+	}
+	
+}
+
 interface QuoteRepository extends ReactiveCrudRepository<Quote, Long> {
 	
 }
@@ -108,4 +162,13 @@ class Quote {
 	private LocalDateTime createdAt;
 	private Integer quoteId;
 
+}
+
+@NoArgsConstructor
+@AllArgsConstructor
+@Data
+class QuoteDto {
+	
+	private Integer id;
+	
 }
