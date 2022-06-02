@@ -13,12 +13,16 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.rsocket.RSocketRequester;
+import org.springframework.security.rsocket.metadata.SimpleAuthenticationEncoder;
+import org.springframework.security.rsocket.metadata.UsernamePasswordMetadata;
 import org.springframework.stereotype.Component;
+import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.rsocket.metadata.WellKnownMimeType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -30,6 +34,9 @@ import reactor.core.publisher.Mono;
 @Slf4j
 @SpringBootApplication
 public class RsocketServiceAApplication {
+	
+	private static final MimeType SIMPLE_AUTH = MimeTypeUtils
+			.parseMimeType(WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION.getString());
 
 	public static void main(String[] args) {
 		SpringApplication.run(RsocketServiceAApplication.class, args);
@@ -40,9 +47,14 @@ public class RsocketServiceAApplication {
 
 	@Bean
 	RSocketRequester requester(RSocketRequester.Builder builder) {
+
+        UsernamePasswordMetadata user = new UsernamePasswordMetadata("user", "password");
+		
 		log.info("Initializing RSocket Requester on port " + port);
 		return builder
 				.dataMimeType(MimeTypeUtils.APPLICATION_JSON)
+				.setupMetadata(user, SIMPLE_AUTH)
+                .rsocketStrategies(b -> b.encoder(new SimpleAuthenticationEncoder()))
 				.tcp("localhost", port);
 	}
 
