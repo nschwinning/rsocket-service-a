@@ -70,3 +70,4 @@ grant update on quote_id_seq to smexnet;
 - https://spring.io/blog/2021/06/02/wiremock-for-rsocket
 - https://spring.io/blog/2020/05/25/getting-started-with-rsocket-testing-spring-boot-responders
 - https://spring.io/blog/2020/06/17/getting-started-with-rsocket-spring-security
+- https://github.com/spring-tips/rsocket-security
